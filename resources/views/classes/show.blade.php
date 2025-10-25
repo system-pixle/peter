@@ -1,35 +1,43 @@
-
 @extends('layouts.app')
 
-@section('title', 'Class: ' . $class_name)
-
 @section('content')
-<div class="bg-white p-6 rounded-lg shadow">
-    <h2 class="text-2xl font-semibold mb-4">Class: {{ $class_name }}</h2>
+<div class="container">
+    <h2 class="mb-4">{{ $class->name }} - Class Overview</h2>
 
-    <a href="{{ route('classes.index') }}" class="text-blue-500 mb-4 inline-block">&larr; Back to Classes</a>
+    <p><strong>Teacher:</strong> {{ $class->teacher_name ?? 'Not assigned' }}</p>
+    <p><strong>Description:</strong> {{ $class->description ?? 'No description' }}</p>
 
-    <table class="w-full border">
-        <thead>
-            <tr class="bg-gray-100">
-                <th class="p-2 text-left">Student Name</th>
-                <th class="p-2 text-left">Attendance Count</th>
-                <th class="p-2 text-left">Amount Due</th>
-                <th class="p-2 text-left">Amount Paid</th>
-                <th class="p-2 text-left">Balance</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach ($students as $student)
-                <tr class="border-t">
-                    <td class="p-2">{{ $student->name }}</td>
-                    <td class="p-2">{{ $student->attendance_count }}</td>
-                    <td class="p-2">Ksh {{ number_format($student->amount_due, 2) }}</td>
-                    <td class="p-2">Ksh {{ number_format($student->amount_paid, 2) }}</td>
-                    <td class="p-2 font-semibold text-red-600">Ksh {{ number_format($student->balance, 2) }}</td>
+    <hr>
+
+    <h4>Students in this Class</h4>
+
+    @if($class->students->count() > 0)
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Admission No.</th>
+                    <th>Name</th>
+                    <th>Gender</th>
+                    <th>Date of Birth</th>
+                    <th>Parent</th>
+                    <th>Contact</th>
                 </tr>
-            @endforeach
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach($class->students as $student)
+                    <tr>
+                        <td>{{ $student->admission_number }}</td>
+                        <td>{{ $student->name }}</td>
+                        <td>{{ $student->gender }}</td>
+                        <td>{{ $student->dob }}</td>
+                        <td>{{ $student->parent_name }}</td>
+                        <td>{{ $student->contact }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @else
+        <p>No students have been added to this class yet.</p>
+    @endif
 </div>
 @endsection

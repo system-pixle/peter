@@ -11,19 +11,31 @@ class Fee extends Model
 
     protected $fillable = [
         'student_id',
+        'term',
         'amount_due',
         'amount_paid',
-        'term',
         'payment_date',
     ];
 
+    // 🧩 Relationships
     public function student()
     {
         return $this->belongsTo(Student::class);
     }
 
+    public function breakdowns()
+    {
+        return $this->hasMany(FeeBreakdown::class);
+    }
+
+    // 🧮 Accessors / Helpers
     public function getBalanceAttribute()
     {
         return $this->amount_due - $this->amount_paid;
+    }
+
+    public function getTotalBreakdownAttribute()
+    {
+        return $this->breakdowns->sum('amount');
     }
 }

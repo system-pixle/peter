@@ -1,25 +1,53 @@
 <?php
 
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\StudentController;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TeacherController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\FeeController;
 use App\Http\Controllers\FeeReportController;
 use App\Http\Controllers\StudentFeeController;
 use App\Http\Controllers\ClassOverviewController;
+use App\Http\Controllers\ClassExportController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Auth\RoleLoginController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\PaymentController;
 
+/*
+|--------------------------------------------------------------------------
+| Public / Welcome
+|--------------------------------------------------------------------------
+*/
+Route::get('/', fn() => view('welcome'))->name('welcome');
 
-Route::get('/', function () {
-    return view('welcome');
-});
+/*
+|--------------------------------------------------------------------------
+| Role-based Login
+|--------------------------------------------------------------------------
+*/
+Route::get('/login/{role}', [RoleLoginController::class, 'showLoginForm'])->name('login.role');
+Route::post('/login/{role}', [RoleLoginController::class, 'login'])->name('login.role.submit');
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+/*
+|--------------------------------------------------------------------------
+| Main Dashboard (redirects based on role)
+|--------------------------------------------------------------------------
+*/
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware('auth')
+    ->name('dashboard');
 
+/*
+|--------------------------------------------------------------------------
+| Profile
+|--------------------------------------------------------------------------
+*/
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
@@ -28,106 +56,102 @@ Route::middleware('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Director Routes
+| Finance (Director only)
 |--------------------------------------------------------------------------
-| Only the Director can create or manage Admin accounts
+*/
+Route::prefix('finance')->middleware(['auth', 'role:director'])->name('finance.')->group(function () {
+    Route::get('/', [FinanceController::class, 'index'])->name('dashboard');
+
+    // Fees
+    Route::get('/fees', [FinanceController::class, 'manageFees'])->name('fees');
+    Route::get('/fees/create', [FinanceController::class, 'createFee'])->name('fees.create');
+    Route::post('/fees/store', [FinanceController::class, 'storeFee'])->name('fees.store');
+    Route::get('/fees/{id}/edit', [FinanceController::class, 'editFee'])->name('fees.edit');
+    Route::put('/fees/{id}', [FinanceController::class, 'updateFee'])->name('fees.update');
+    Route::delete('/fees/{id}', [FinanceController::class, 'destroyFee'])->name('fees.destroy');
+
+    // Fee breakdowns
+    Route::get('/breakdowns', [FinanceController::class, 'manageBreakdowns'])->name('breakdowns');
+    Route::post('/breakdowns/store', [FinanceController::class, 'storeBreakdown'])->name('breakdowns.store');
+    Route::delete('/breakdowns/{id}', [FinanceController::class, 'destroyBreakdown'])->name('breakdowns.destroy');
+    Route::get('/breakdowns/print/{term}', [FinanceController::class, 'printBreakdown'])->name('breakdowns.print');
+
+    // Student reports
+    Route::get('/student/{id}/report', [FinanceController::class, 'studentReport'])->name('student.report');
+    Route::get('/student/{id}/print', [FinanceController::class, 'printStudentReport'])->name('student.print');
+
+    // Payments
+    Route::get('/payments/{student}', [FinanceController::class, 'studentPayments'])->name('payments.index');
+    Route::post('/payments/{student}', [FinanceController::class, 'storePayment'])->name('payments.store');
+
+    // Employees
+    Route::get('/employees', [EmployeeController::class, 'index'])->name('employees');
+    Route::get('/employees/create', [EmployeeController::class, 'create'])->name('employees.create');
+    Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+    Route::delete('/employees/{id}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Director-only
+|--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'role:director'])->group(function () {
-    Route::get('/admins', [AdminController::class, 'index'])->name('admins.index');
-    Route::get('/admins/create', [AdminController::class, 'create'])->name('admins.create');
-    Route::post('/admins', [AdminController::class, 'store'])->name('admins.store');
-    Route::delete('/admins/{admin}', [AdminController::class, 'destroy'])->name('admins.destroy');
+    Route::resource('admins', AdminController::class)->only(['index','create','store','destroy']);
+    Route::get('/director/dashboard', [DashboardController::class, 'director'])->name('director.dashboard');
+    Route::get('/director/finances', [App\Http\Controllers\FinanceController::class, 'index'])
+        ->name('director.finances');
 });
 
 /*
 |--------------------------------------------------------------------------
-| Student Routes
+| Director + Admin
 |--------------------------------------------------------------------------
-| Director, Admin, and Teacher can manage students
-*/
-Route::middleware(['auth', 'role:director,admin,teacher'])->group(function () {
-    Route::resource('students', StudentController::class);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Teacher Routes
-|--------------------------------------------------------------------------
-| Admins and Directors can manage teachers
 */
 Route::middleware(['auth', 'role:director,admin'])->group(function () {
-    Route::get('/teachers', [TeacherController::class, 'index'])->name('teachers.index');
-    Route::get('/teachers/create', [TeacherController::class, 'create'])->name('teachers.create');
-    Route::post('/teachers', [TeacherController::class, 'store'])->name('teachers.store');
-    Route::delete('/teachers/{teacher}', [TeacherController::class, 'destroy'])->name('teachers.destroy');
+    Route::resource('teachers', TeacherController::class);
+    Route::resource('fees', FeeController::class);
+    Route::get('/fees/report', [FeeReportController::class, 'index'])->name('fees.report');
+    Route::resource('student-fees', StudentFeeController::class)->only(['index','create','store']);
+    Route::resource('classes', ClassOverviewController::class);
+    Route::get('/classes/export/{class_name}/pdf', [ClassExportController::class, 'exportPdf'])->name('classes.export.pdf');
+    Route::get('/classes/export/{class_name}/excel', [ClassExportController::class, 'exportExcel'])->name('classes.export.excel');
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('/admin/dashboard', [DashboardController::class, 'admin'])->name('admin.dashboard');
+
+    // Shared payments view for Admin/Director
+    Route::get('/payments/{student}', [FinanceController::class, 'studentPayments'])->name('payments.index');
+    Route::post('/payments/{student}', [FinanceController::class, 'storePayment'])->name('payments.store');
+
+    Route::get('/director/finances', [FinanceController::class, 'index'])->name('director.finances');
+
 });
 
 /*
 |--------------------------------------------------------------------------
-| Student Routes
-|--------------------------------------------------------------------------
-| Admins, Teachers, and Directors can manage/view students
-*/
-Route::middleware(['auth', 'role:director,admin,teacher'])->group(function () {
-    Route::get('/students', [StudentController::class, 'index'])->name('students.index');
-});
-
-Route::middleware(['auth', 'role:director,admin'])->group(function () {
-    Route::get('/students/create', [StudentController::class, 'create'])->name('students.create');
-    Route::post('/students', [StudentController::class, 'store'])->name('students.store');
-    Route::get('/students/{student}/edit', [StudentController::class, 'edit'])->name('students.edit');
-    Route::put('/students/{student}', [StudentController::class, 'update'])->name('students.update');
-    Route::delete('/students/{student}', [StudentController::class, 'destroy'])->name('students.destroy');
-});
-
-/*
-|--------------------------------------------------------------------------
-| Attendance Routes
+| Teacher only
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'role:director,admin,teacher'])->group(function () {
+Route::middleware(['auth', 'role:teacher'])->group(function () {
+    Route::get('/teacher/dashboard', [DashboardController::class, 'teacher'])->name('teacher.dashboard');
+    Route::get('/attendance/create', [AttendanceController::class, 'create'])->name('attendance.create');
+    Route::post('/attendance', [AttendanceController::class, 'store'])->name('attendance.store');
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
 });
 
-Route::middleware(['auth', 'role:teacher,admin'])->group(function () {
-    Route::get('/attendance/create', [AttendanceController::class, 'create'])->name('attendance.create');
-    Route::post('/attendance', [AttendanceController::class, 'store'])->name('attendance.store');
-});
-
-// Only Director & Admin can access fees
-Route::middleware(['auth', 'role:admin,director'])->group(function () {
-    Route::get('/fees', [FeeController::class, 'index'])->name('fees.index');
-    Route::get('/fees/create', [FeeController::class, 'create'])->name('fees.create');
-    Route::post('/fees', [FeeController::class, 'store'])->name('fees.store');
-    Route::get('/fees/{fee}/edit', [FeeController::class, 'edit'])->name('fees.edit');
-    Route::put('/fees/{fee}', [FeeController::class, 'update'])->name('fees.update');
-    Route::delete('/fees/{fee}', [FeeController::class, 'destroy'])->name('fees.destroy');
-});
-
-Route::middleware(['auth', 'role:admin,director'])->group(function () {
-    Route::get('/fees/report', [FeeReportController::class, 'index'])->name('fees.report');
-});
-
-
-Route::middleware(['auth', 'role:admin,director'])->group(function () {
-    Route::get('/student-fees', [StudentFeeController::class, 'index'])->name('student_fees.index');
-    Route::get('/student-fees/create', [StudentFeeController::class, 'create'])->name('student_fees.create');
-    Route::post('/student-fees', [StudentFeeController::class, 'store'])->name('student_fees.store');
-});
-
-
-Route::middleware(['auth', 'role:director,admin'])->group(function () {
+/*
+|--------------------------------------------------------------------------
+| Common routes (All roles)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'role:director,admin,teacher'])->group(function () {
+    Route::resource('students', StudentController::class);
     Route::get('/classes', [ClassOverviewController::class, 'index'])->name('classes.index');
-    Route::get('/classes/{class_name}', [ClassOverviewController::class, 'show'])->name('classes.show');
 });
 
-
-// Director/Admin middleware group
-Route::middleware(['auth', 'role:director,admin'])->group(function () {
-    Route::get('/export-class', [ReportController::class, 'exportClass'])->name('export.class');
-    Route::get('/export-pdf', [ReportController::class, 'exportPDF'])->name('export.pdf');
-});
-
-
-
-require __DIR__.'/auth.php';
+/*
+|--------------------------------------------------------------------------
+| Auth Scaffolding
+|--------------------------------------------------------------------------
+*/
+require __DIR__ . '/auth.php';

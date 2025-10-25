@@ -2,57 +2,114 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Student;
-use App\Models\StudentFee;
-use App\Models\Attendance;
 use Illuminate\Http\Request;
-use PDF;
-use Maatwebsite\Excel\Facades\Excel;
-use App\Exports\ClassExport;
+use App\Models\Schoolclass;
+use App\Models\User; // ✅ use User instead of Teacher
 
 class ClassOverviewController extends Controller
 {
+    /**
+     * Display all classes with student count.
+     */
     public function index()
     {
-        $classes = Student::select('class_name')->distinct()->whereNotNull('class_name')->get();
+        $classes = Schoolclass::withCount('students')->get();
         return view('classes.index', compact('classes'));
     }
 
+    /**
+     * Show form to create new class.
+     */
+    public function create()
+    {
+        // Authorization: controller-level guard
+        if (!in_array(auth()->user()->role, ['admin', 'director'])) {
+            abort(403);
+        }
+
+        // ✅ Get teachers from User model where role = 'teacher'
+        $teachers = User::where('role', 'teacher')->orderBy('name')->get();
+
+        return view('classes.create', compact('teachers'));
+    }
+
+    /**
+     * Store a new class in the database.
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|unique:schoolclasses,name',
+            'teacher_name' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+        ]);
+
+        Schoolclass::create($request->only(['name', 'teacher_name', 'description']));
+
+        return redirect()->route('classes.index')->with('success', 'Class added successfully!');
+    }
+
+    /**
+     * Show details for one class.
+     */
     public function show($class_name)
     {
-        $students = Student::where('class_name', $class_name)->get();
+        $class = Schoolclass::where('name', $class_name)
+                            ->with('students')
+                            ->firstOrFail();
 
-        $students = $students->map(function ($student) {
-            $student->attendance_count = Attendance::where('student_id', $student->id)->count();
-            $fees = StudentFee::where('student_id', $student->id)->get();
-            $student->amount_due = $fees->sum('amount_due');
-            $student->amount_paid = $fees->sum('amount_paid');
-            $student->balance = $student->amount_due - $student->amount_paid;
-            return $student;
-        });
-
-        return view('classes.show', compact('students', 'class_name'));
+        return view('classes.show', compact('class'));
     }
 
-    public function exportPdf($class_name)
+    /**
+     * Show edit form for a specific class.
+     */
+    public function edit($id)
     {
-        $students = Student::where('class_name', $class_name)->get();
+        if (!in_array(auth()->user()->role, ['admin', 'director'])) {
+            abort(403, 'Unauthorized action.');
+        }
 
-        $students = $students->map(function ($student) {
-            $student->attendance_count = Attendance::where('student_id', $student->id)->count();
-            $fees = StudentFee::where('student_id', $student->id)->get();
-            $student->amount_due = $fees->sum('amount_due');
-            $student->amount_paid = $fees->sum('amount_paid');
-            $student->balance = $student->amount_due - $student->amount_paid;
-            return $student;
-        });
-
-        $pdf = PDF::loadView('classes.export-pdf', compact('students', 'class_name'));
-        return $pdf->download("Class_Report_{$class_name}.pdf");
+        $class = Schoolclass::findOrFail($id);
+        return view('classes.edit', compact('class'));
     }
 
-    public function exportExcel($class_name)
+    /**
+     * Update class info.
+     */
+    public function update(Request $request, $id)
     {
-        return Excel::download(new ClassExport($class_name), "Class_Report_{$class_name}.xlsx");
+        if (!in_array(auth()->user()->role, ['admin', 'director'])) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $class = Schoolclass::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|unique:schoolclasses,name,' . $class->id,
+            'teacher_name' => 'nullable|string',
+        ]);
+
+        $class->update([
+            'name' => $request->name,
+            'teacher_name' => $request->teacher_name,
+        ]);
+
+        return redirect()->route('classes.index')->with('success', 'Class updated successfully!');
+    }
+
+    /**
+     * Delete a class.
+     */
+    public function destroy($id)
+    {
+        if (!in_array(auth()->user()->role, ['admin', 'director'])) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $class = Schoolclass::findOrFail($id);
+        $class->delete();
+
+        return redirect()->route('classes.index')->with('success', 'Class deleted successfully!');
     }
 }
